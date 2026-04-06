@@ -24,11 +24,11 @@ const CtaSection = () => {
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button variant="hero" size="lg" className="text-base px-8 py-6">
-              Criar conta <ArrowRight className="w-4 h-4 ml-1" />
+            <Button variant="hero" size="lg" className="text-base px-8 py-6" asChild>
+              <Link to="/dashboard">Criar conta <ArrowRight className="w-4 h-4 ml-1" /></Link>
             </Button>
-            <Button variant="heroOutline" size="lg" className="text-base px-8 py-6">
-              <Play className="w-4 h-4 mr-1" /> Testar agora
+            <Button variant="heroOutline" size="lg" className="text-base px-8 py-6" asChild>
+              <Link to="/dashboard"><Play className="w-4 h-4 mr-1" /> Testar agora</Link>
             </Button>
           </div>
         </motion.div>

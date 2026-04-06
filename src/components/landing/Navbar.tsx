@@ -10,8 +10,8 @@ const Navbar = () => {
           <Bot className="w-5 h-5 text-primary" />
           <span className="font-display font-bold text-lg">CriptoBot</span>
         </div>
-        <Button variant="hero" size="sm">
-          Começar agora
+        <Button variant="hero" size="sm" asChild>
+          <Link to="/dashboard">Começar agora</Link>
         </Button>
       </div>
     </nav>

@@ -56,11 +56,11 @@ const HeroSection = () => {
             transition={{ delay: 0.8 }}
             className="flex flex-col sm:flex-row gap-4 justify-center"
           >
-            <Button variant="hero" size="lg" className="text-base px-8 py-6">
-              Começar agora <ArrowRight className="w-4 h-4 ml-1" />
+            <Button variant="hero" size="lg" className="text-base px-8 py-6" asChild>
+              <Link to="/dashboard">Começar agora <ArrowRight className="w-4 h-4 ml-1" /></Link>
             </Button>
-            <Button variant="heroOutline" size="lg" className="text-base px-8 py-6">
-              <Shield className="w-4 h-4 mr-1" /> Testar com segurança
+            <Button variant="heroOutline" size="lg" className="text-base px-8 py-6" asChild>
+              <Link to="/dashboard"><Shield className="w-4 h-4 mr-1" /> Testar com segurança</Link>
             </Button>
           </motion.div>
         </motion.div>
