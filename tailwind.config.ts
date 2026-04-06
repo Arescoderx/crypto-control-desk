@@ -16,6 +16,7 @@ export default {
       fontFamily: {
         display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
         body: ['Inter', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -53,6 +54,9 @@ export default {
         },
         surface: "hsl(var(--surface))",
         glow: "hsl(var(--glow))",
+        profit: "hsl(var(--profit))",
+        loss: "hsl(var(--loss))",
+        warning: "hsl(var(--warning))",
         sidebar: {
           DEFAULT: "hsl(var(--sidebar-background))",
           foreground: "hsl(var(--sidebar-foreground))",
