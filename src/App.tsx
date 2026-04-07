@@ -7,6 +7,7 @@ import { AppLayout } from "@/components/AppLayout";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import Trading from "./pages/Trading";
+import Analysis from "./pages/Analysis";
 import Strategies from "./pages/Strategies";
 import TradeHistory from "./pages/TradeHistory";
 import SettingsPage from "./pages/SettingsPage";
@@ -27,6 +28,7 @@ const App = () => (
           {/* Dashboard pages - with sidebar layout */}
           <Route path="/dashboard" element={<AppLayout><Dashboard /></AppLayout>} />
           <Route path="/trading" element={<AppLayout><Trading /></AppLayout>} />
+          <Route path="/analysis" element={<AppLayout><Analysis /></AppLayout>} />
           <Route path="/strategies" element={<AppLayout><Strategies /></AppLayout>} />
           <Route path="/history" element={<AppLayout><TradeHistory /></AppLayout>} />
           <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
