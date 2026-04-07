@@ -2,21 +2,49 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/StatCard";
-import { Wallet, TrendingUp, Activity, Bot, Power } from "lucide-react";
-import { totalBalance, botStatus, recentTrades, performanceData, coins } from "@/lib/mock-data";
+import { Wallet, TrendingUp, Activity, Bot, Power, RefreshCw } from "lucide-react";
+import { botStatus, recentTrades, performanceData, coins } from "@/lib/mock-data";
+import { useCryptoPrices } from "@/hooks/useCryptoPrices";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { useState } from "react";
 import { motion } from "framer-motion";
 
 export default function Dashboard() {
   const [botActive, setBotActive] = useState(botStatus.active);
+  const { prices, loading, lastUpdated, refetch } = useCryptoPrices();
+
+  // Calculate real balances using live prices
+  const enrichedCoins = coins.map((coin) => {
+    const live = prices[coin.symbol];
+    if (live) {
+      return {
+        ...coin,
+        price: live.price,
+        change24h: live.change24h,
+        valueUSD: coin.balance * live.price,
+      };
+    }
+    return coin;
+  });
+
+  const totalBalance = enrichedCoins.reduce((sum, c) => sum + c.valueUSD, 0);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold font-display">Dashboard</h1>
-          <p className="text-muted-foreground text-sm">Visão geral do seu portfólio</p>
+          <div className="flex items-center gap-2">
+            <p className="text-muted-foreground text-sm">Visão geral do seu portfólio</p>
+            {lastUpdated && (
+              <span className="text-xs text-muted-foreground/60">
+                · Atualizado {lastUpdated.toLocaleTimeString("pt-BR")}
+              </span>
+            )}
+            <Button variant="ghost" size="icon" className="h-5 w-5" onClick={refetch}>
+              <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
         </div>
         <Button
           onClick={() => setBotActive(!botActive)}
@@ -29,7 +57,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Saldo Total" value={`$${totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`} change="+4.32% (24h)" changeType="profit" icon={Wallet} />
+        <StatCard title="Saldo Total" value={`$${totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} change="+4.32% (24h)" changeType="profit" icon={Wallet} />
         <StatCard title="Lucro 24h" value={`+$${botStatus.profit24h.toFixed(2)}`} change={`${botStatus.totalTrades24h} trades`} changeType="profit" icon={TrendingUp} />
         <StatCard title="Lucro Total" value={`+$${botStatus.profitTotal.toFixed(2)}`} change="Desde o início" changeType="profit" icon={Activity} />
         <StatCard title="Estratégias Ativas" value={String(botStatus.activeStrategies)} change={`Uptime: ${botStatus.uptime}`} changeType="neutral" icon={Bot} />
@@ -64,10 +92,13 @@ export default function Dashboard() {
 
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Saldo por Moeda</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Saldo por Moeda</CardTitle>
+              {loading && <span className="text-xs text-primary animate-pulse">atualizando...</span>}
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {coins.slice(0, 5).map((coin) => (
+            {enrichedCoins.slice(0, 5).map((coin) => (
               <motion.div
                 key={coin.symbol}
                 className="flex items-center justify-between py-1.5"
@@ -82,9 +113,9 @@ export default function Dashboard() {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-mono">${coin.valueUSD.toLocaleString()}</p>
+                  <p className="text-sm font-mono">${coin.valueUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                   <p className={`text-xs font-mono ${coin.change24h >= 0 ? 'text-profit' : 'text-loss'}`}>
-                    {coin.change24h >= 0 ? '+' : ''}{coin.change24h}%
+                    {coin.change24h >= 0 ? '+' : ''}{coin.change24h.toFixed(2)}%
                   </p>
                 </div>
               </motion.div>
