@@ -26,7 +26,8 @@ import { botStatus } from "@/lib/mock-data";
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Trading", url: "/trading", icon: ArrowLeftRight },
-  { title: "Estratégias", url: "/strategies", icon: Brain },
+  { title: "Análise IA", url: "/analysis", icon: Brain },
+  { title: "Estratégias", url: "/strategies", icon: Zap },
   { title: "Histórico", url: "/history", icon: History },
   { title: "Configurações", url: "/settings", icon: Settings },
 ];
