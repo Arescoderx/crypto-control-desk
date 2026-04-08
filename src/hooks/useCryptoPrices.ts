@@ -21,7 +21,8 @@ const COINGECKO_IDS: Record<string, string> = {
   DOGE: "dogecoin",
 };
 
-const REFRESH_INTERVAL = 5 * 60 * 1000; // 5 minutes
+// 🔥 5 SEGUNDOS (IDEAL)
+const REFRESH_INTERVAL = 5000;
 
 export function useCryptoPrices() {
   const [prices, setPrices] = useState<CryptoPrices>({});
@@ -31,7 +32,10 @@ export function useCryptoPrices() {
 
   const fetchPrices = useCallback(async () => {
     try {
+      setLoading(true);
+
       const ids = Object.values(COINGECKO_IDS).join(",");
+
       const res = await fetch(
         `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
       );
@@ -43,6 +47,7 @@ export function useCryptoPrices() {
       const data: Record<string, CoinGeckoPrice> = await res.json();
 
       const mapped: CryptoPrices = {};
+
       for (const [symbol, geckoId] of Object.entries(COINGECKO_IDS)) {
         if (data[geckoId]) {
           mapped[symbol] = {
@@ -52,9 +57,12 @@ export function useCryptoPrices() {
         }
       }
 
-      setPrices(mapped);
-      setLastUpdated(new Date());
-      setError(null);
+      // 🔥 só atualiza se tiver dados reais
+      if (Object.keys(mapped).length > 0) {
+        setPrices(mapped);
+        setLastUpdated(new Date());
+        setError(null);
+      }
     } catch (err) {
       console.error("Failed to fetch crypto prices:", err);
       setError(err instanceof Error ? err.message : "Erro ao buscar preços");
@@ -64,8 +72,10 @@ export function useCryptoPrices() {
   }, []);
 
   useEffect(() => {
-    fetchPrices();
+    fetchPrices(); // 🔥 pega na hora
+
     const interval = setInterval(fetchPrices, REFRESH_INTERVAL);
+
     return () => clearInterval(interval);
   }, [fetchPrices]);
 

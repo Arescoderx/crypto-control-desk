@@ -3,51 +3,107 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/StatCard";
 import { Wallet, TrendingUp, Activity, Bot, Power, RefreshCw } from "lucide-react";
-import { botStatus, recentTrades, performanceData, coins } from "@/lib/mock-data";
+import { botStatus, performanceData } from "@/lib/mock-data";
 import { useCryptoPrices } from "@/hooks/useCryptoPrices";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { getDB, saveDB } from "@/lib/db";
+import { runBot } from "@/lib/bot";
+import { updatePortfolioHistory } from "@/lib/chart";
 
 export default function Dashboard() {
-  const [botActive, setBotActive] = useState(botStatus.active);
   const { prices, loading, lastUpdated, refetch } = useCryptoPrices();
 
-  // Calculate real balances using live prices
-  const enrichedCoins = coins.map((coin) => {
-    const live = prices[coin.symbol];
-    if (live) {
-      return {
-        ...coin,
-        price: live.price,
-        change24h: live.change24h,
-        valueUSD: coin.balance * live.price,
-      };
-    }
-    return coin;
+  const [dbData, setDbData] = useState<any>(null);
+  const [botActive, setBotActive] = useState(botStatus.active);
+
+  // 🔥 carregar banco
+  useEffect(() => {
+    const load = () => {
+      const db = getDB();
+      setDbData(db);
+
+      if (db?.bot?.active !== undefined) {
+        setBotActive(db.bot.active);
+      }
+    };
+
+    load();
+
+    const interval = setInterval(load, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 🔥 BOT LOOP (IA rodando)
+  useEffect(() => {
+    if (!botActive) return;
+
+    const interval = setInterval(() => {
+      runBot(prices);
+      updatePortfolioHistory(prices);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [botActive, prices]);
+
+  const toggleBot = () => {
+    const newState = !botActive;
+    setBotActive(newState);
+
+    const db = getDB();
+    db.bot = { active: newState };
+    saveDB(db);
+  };
+
+  const holdings = dbData?.holdings || [];
+  const balance = dbData?.wallet?.balance || 0;
+  const trades = dbData?.trades || [];
+
+  const enrichedHoldings = holdings.map((h: any) => {
+    const live = prices[h.symbol];
+    const price = live?.price || h.avgPrice;
+    const valueUSD = h.amount * price;
+    const pnl = (price - h.avgPrice) * h.amount;
+
+    return {
+      ...h,
+      price,
+      valueUSD,
+      pnl,
+      change24h: live?.change24h || 0,
+    };
   });
 
-  const totalBalance = enrichedCoins.reduce((sum, c) => sum + c.valueUSD, 0);
+  const portfolioValue = enrichedHoldings.reduce((sum: number, c: any) => sum + c.valueUSD, 0);
+  const totalBalance = balance + portfolioValue;
+
+  const totalPnl = trades.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
 
   return (
     <div className="space-y-6">
+      {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold font-display">Dashboard</h1>
           <div className="flex items-center gap-2">
             <p className="text-muted-foreground text-sm">Visão geral do seu portfólio</p>
+
             {lastUpdated && (
               <span className="text-xs text-muted-foreground/60">
                 · Atualizado {lastUpdated.toLocaleTimeString("pt-BR")}
               </span>
             )}
+
             <Button variant="ghost" size="icon" className="h-5 w-5" onClick={refetch}>
               <RefreshCw className={`h-3 w-3 ${loading ? "animate-spin" : ""}`} />
             </Button>
           </div>
         </div>
+
+        {/* BOT */}
         <Button
-          onClick={() => setBotActive(!botActive)}
+          onClick={toggleBot}
           variant={botActive ? "default" : "outline"}
           className={botActive ? "glow-primary" : ""}
         >
@@ -56,117 +112,158 @@ export default function Dashboard() {
         </Button>
       </div>
 
+      {/* CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Saldo Total" value={`$${totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} change="+4.32% (24h)" changeType="profit" icon={Wallet} />
-        <StatCard title="Lucro 24h" value={`+$${botStatus.profit24h.toFixed(2)}`} change={`${botStatus.totalTrades24h} trades`} changeType="profit" icon={TrendingUp} />
-        <StatCard title="Lucro Total" value={`+$${botStatus.profitTotal.toFixed(2)}`} change="Desde o início" changeType="profit" icon={Activity} />
-        <StatCard title="Estratégias Ativas" value={String(botStatus.activeStrategies)} change={`Uptime: ${botStatus.uptime}`} changeType="neutral" icon={Bot} />
+        <StatCard
+          title="Saldo Total"
+          value={`$${totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+          change="Dinheiro + ativos"
+          changeType="neutral"
+          icon={Wallet}
+        />
+
+        <StatCard
+          title="Saldo em Caixa"
+          value={`$${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+          change="Disponível"
+          changeType="neutral"
+          icon={Activity}
+        />
+
+        <StatCard
+          title="Lucro Total"
+          value={`${totalPnl >= 0 ? "+" : ""}$${totalPnl.toFixed(2)}`}
+          change="Trades realizados"
+          changeType={totalPnl >= 0 ? "profit" : "loss"}
+          icon={TrendingUp}
+        />
+
+        <StatCard
+          title="Estratégias Ativas"
+          value={String(botStatus.activeStrategies)}
+          change={`Uptime: ${botStatus.uptime}`}
+          changeType="neutral"
+          icon={Bot}
+        />
       </div>
 
+      {/* GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* GRÁFICO */}
         <Card className="lg:col-span-2 bg-card border-border">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Performance (30d)</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Performance (30d)
+            </CardTitle>
           </CardHeader>
+
           <CardContent>
             <ResponsiveContainer width="100%" height={280}>
-              <AreaChart data={performanceData}>
+              <AreaChart data={(dbData?.history || []).map((h: any) => ({
+                date: h.date,
+                portfolio: h.value,
+              }))}>
                 <defs>
                   <linearGradient id="colorPortfolio" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="hsl(155, 100%, 50%)" stopOpacity={0.3} />
                     <stop offset="95%" stopColor="hsl(155, 100%, 50%)" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: 'hsl(220, 10%, 55%)', fontSize: 11 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(220, 10%, 55%)', fontSize: 11 }} tickFormatter={(v) => `$${(v/1000).toFixed(0)}k`} />
-                <Tooltip
-                  contentStyle={{ background: 'hsl(220, 18%, 10%)', border: '1px solid hsl(220, 15%, 18%)', borderRadius: '8px', fontSize: 12 }}
-                  labelStyle={{ color: 'hsl(0, 0%, 95%)' }}
-                  formatter={(value: number) => [`$${value.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, 'Portfólio']}
+
+                <XAxis dataKey="date" axisLine={false} tickLine={false} />
+                <YAxis axisLine={false} tickLine={false} />
+                <Tooltip />
+
+                <Area
+                  type="monotone"
+                  dataKey="portfolio"
+                  stroke="hsl(155, 100%, 50%)"
+                  strokeWidth={2}
+                  fill="url(#colorPortfolio)"
                 />
-                <Area type="monotone" dataKey="portfolio" stroke="hsl(155, 100%, 50%)" strokeWidth={2} fill="url(#colorPortfolio)" />
               </AreaChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
+        {/* CARTEIRA */}
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Saldo por Moeda</CardTitle>
-              {loading && <span className="text-xs text-primary animate-pulse">atualizando...</span>}
-            </div>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Carteira
+            </CardTitle>
           </CardHeader>
+
           <CardContent className="space-y-3">
-            {enrichedCoins.slice(0, 5).map((coin) => (
-              <motion.div
-                key={coin.symbol}
-                className="flex items-center justify-between py-1.5"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-lg">{coin.icon}</span>
-                  <div>
-                    <p className="text-sm font-medium">{coin.symbol}</p>
-                    <p className="text-xs text-muted-foreground font-mono">{coin.balance}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-mono">${coin.valueUSD.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                  <p className={`text-xs font-mono ${coin.change24h >= 0 ? 'text-profit' : 'text-loss'}`}>
-                    {coin.change24h >= 0 ? '+' : ''}{coin.change24h.toFixed(2)}%
-                  </p>
-                </div>
-              </motion.div>
-            ))}
+            {enrichedHoldings.length > 0 ? (
+              enrichedHoldings.map((coin: any) => (
+                <motion.div key={coin.symbol} className="flex justify-between">
+                  <span>{coin.symbol}</span>
+                  <span>${coin.valueUSD.toFixed(2)}</span>
+                </motion.div>
+              ))
+            ) : (
+              <p>Nenhum ativo</p>
+            )}
           </CardContent>
         </Card>
       </div>
 
+      {/* TRADES */}
       <Card className="bg-card border-border">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium text-muted-foreground">Trades Recentes</CardTitle>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Trades Recentes
+          </CardTitle>
         </CardHeader>
+
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-muted-foreground text-xs border-b border-border">
-                  <th className="text-left py-2 font-medium">Par</th>
-                  <th className="text-left py-2 font-medium">Tipo</th>
-                  <th className="text-right py-2 font-medium">Preço</th>
-                  <th className="text-right py-2 font-medium">Qtd</th>
-                  <th className="text-right py-2 font-medium">Total</th>
-                  <th className="text-right py-2 font-medium">P&L</th>
-                  <th className="text-right py-2 font-medium">Status</th>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-muted-foreground text-xs border-b border-border">
+                <th className="text-left py-2">Par</th>
+                <th className="text-left py-2">Tipo</th>
+                <th className="text-right py-2">Preço</th>
+                <th className="text-right py-2">Qtd</th>
+                <th className="text-right py-2">Total</th>
+                <th className="text-right py-2">P&L</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {trades.slice(0, 5).map((t: any) => (
+                <tr key={t.id} className="border-b border-border/50">
+                  <td className="py-2 font-mono">{t.symbol}/USDT</td>
+
+                  <td>
+                    <Badge
+                      variant="outline"
+                      className={
+                        t.type === "buy"
+                          ? "text-profit border-profit"
+                          : "text-loss border-loss"
+                      }
+                    >
+                      {t.type === "buy" ? "Compra" : "Venda"}
+                    </Badge>
+                  </td>
+
+                  <td className="text-right">${t.price}</td>
+                  <td className="text-right">{t.amount}</td>
+                  <td className="text-right">${t.total}</td>
+
+                  <td
+                    className={`text-right ${t.pnl >= 0 ? "text-profit" : "text-loss"
+                      }`}
+                  >
+                    {t.pnl !== undefined
+                      ? `${t.pnl >= 0 ? "+" : ""}$${t.pnl.toFixed(2)}`
+                      : "—"}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {recentTrades.slice(0, 5).map((trade) => (
-                  <tr key={trade.id} className="border-b border-border/50 hover:bg-accent/30 transition-colors">
-                    <td className="py-2.5 font-medium font-mono">{trade.pair}</td>
-                    <td className="py-2.5">
-                      <Badge variant="outline" className={`text-xs ${trade.type === 'buy' ? 'border-profit text-profit' : 'border-loss text-loss'}`}>
-                        {trade.type === 'buy' ? 'Compra' : 'Venda'}
-                      </Badge>
-                    </td>
-                    <td className="py-2.5 text-right font-mono">${trade.price.toLocaleString()}</td>
-                    <td className="py-2.5 text-right font-mono">{trade.amount}</td>
-                    <td className="py-2.5 text-right font-mono">${trade.total.toLocaleString()}</td>
-                    <td className={`py-2.5 text-right font-mono ${trade.pnl && trade.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
-                      {trade.pnl ? `${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}` : '—'}
-                    </td>
-                    <td className="py-2.5 text-right">
-                      <Badge variant="secondary" className="text-xs">
-                        {trade.status === 'completed' ? '✓' : trade.status === 'pending' ? '⏳' : '✗'}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </CardContent>
       </Card>
     </div>

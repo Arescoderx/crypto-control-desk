@@ -1,113 +1,136 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useState } from "react";
-import { Key, Bell, Shield, Globe } from "lucide-react";
 import { toast } from "sonner";
+import {
+  resetAccount,
+  updateBalance,
+  clearTrades,
+  exportData,
+  updateCurrency,
+} from "@/lib/settings";
 
 export default function SettingsPage() {
-  const [apiKey, setApiKey] = useState("");
-  const [apiSecret, setApiSecret] = useState("");
-  const [notifications, setNotifications] = useState(true);
-  const [tradeAlerts, setTradeAlerts] = useState(true);
+  const [balance, setBalance] = useState("");
+  const [currency, setCurrency] = useState("USD");
 
-  const handleSave = () => {
-    toast.success("Configurações salvas com sucesso!");
+  const handleSetBalance = () => {
+    const value = parseFloat(balance);
+
+    if (!value || value <= 0) {
+      toast.error("Valor inválido");
+      return;
+    }
+
+    updateBalance(value);
+    toast.success("Saldo atualizado!");
+    setBalance("");
+  };
+
+  const handleCurrencyChange = (value: "USD" | "BRL") => {
+    setCurrency(value);
+    updateCurrency(value);
+    toast.success("Moeda atualizada!");
+  };
+
+  const handleReset = () => {
+    resetAccount();
+    toast.success("Conta resetada!");
+  };
+
+  const handleClearTrades = () => {
+    clearTrades();
+    toast.success("Histórico apagado!");
+  };
+
+  const handleExport = () => {
+    exportData();
+    toast.success("CSV exportado!");
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold font-display">Configurações</h1>
-        <p className="text-muted-foreground text-sm">Gerencie suas preferências e API keys</p>
+        <p className="text-muted-foreground text-sm">
+          Gerencie seu sistema
+        </p>
       </div>
 
+      {/* 💰 SALDO */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base"><Key className="h-4 w-4 text-primary" />API Keys</CardTitle>
+          <CardTitle>Saldo</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">Exchange</label>
-            <Select defaultValue="binance">
-              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="binance">Binance</SelectItem>
-                <SelectItem value="bybit">Bybit</SelectItem>
-                <SelectItem value="kucoin">KuCoin</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">API Key</label>
-            <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Cole sua API key" className="bg-secondary border-border font-mono" />
-          </div>
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">API Secret</label>
-            <Input type="password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="Cole sua API secret" className="bg-secondary border-border font-mono" />
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary p-3 rounded-lg">
-            <Shield className="h-4 w-4 text-warning shrink-0" />
-            <span>Suas chaves são armazenadas de forma segura e nunca compartilhadas.</span>
-          </div>
+        <CardContent className="space-y-3">
+          <Input
+            placeholder="Novo saldo"
+            value={balance}
+            onChange={(e) => setBalance(e.target.value)}
+          />
+          <Button onClick={handleSetBalance} className="w-full">
+            Atualizar saldo
+          </Button>
         </CardContent>
       </Card>
 
+      {/* 💱 MOEDA */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base"><Bell className="h-4 w-4 text-primary" />Notificações</CardTitle>
+          <CardTitle>Moeda</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Notificações push</p>
-              <p className="text-xs text-muted-foreground">Receba alertas no navegador</p>
-            </div>
-            <Switch checked={notifications} onCheckedChange={setNotifications} />
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium">Alertas de trades</p>
-              <p className="text-xs text-muted-foreground">Aviso a cada operação executada</p>
-            </div>
-            <Switch checked={tradeAlerts} onCheckedChange={setTradeAlerts} />
-          </div>
+        <CardContent>
+          <Select value={currency} onValueChange={handleCurrencyChange}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="USD">USD ($)</SelectItem>
+              <SelectItem value="BRL">BRL (R$)</SelectItem>
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 
+      {/* ⚙️ AÇÕES */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base"><Globe className="h-4 w-4 text-primary" />Preferências</CardTitle>
+          <CardTitle>Ações</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">Moeda de referência</label>
-            <Select defaultValue="usd">
-              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="usd">USD</SelectItem>
-                <SelectItem value="brl">BRL</SelectItem>
-                <SelectItem value="eur">EUR</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <label className="text-sm text-muted-foreground mb-1 block">Fuso horário</label>
-            <Select defaultValue="brt">
-              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="brt">Brasília (BRT)</SelectItem>
-                <SelectItem value="utc">UTC</SelectItem>
-                <SelectItem value="est">EST</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+        <CardContent className="space-y-3">
+          <Button
+            variant="destructive"
+            onClick={handleReset}
+            className="w-full"
+          >
+            Resetar conta
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={handleClearTrades}
+            className="w-full"
+          >
+            Limpar histórico
+          </Button>
+
+          <Button
+            variant="secondary"
+            onClick={handleExport}
+            className="w-full"
+          >
+            Exportar CSV
+          </Button>
         </CardContent>
       </Card>
-
-      <Button onClick={handleSave} className="w-full">Salvar Configurações</Button>
     </div>
   );
 }
