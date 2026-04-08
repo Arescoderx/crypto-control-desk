@@ -1,83 +1,87 @@
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useState } from "react";
 
-interface CoinGeckoPrice {
-  usd: number;
-  usd_24h_change: number;
-}
-
-interface CryptoPrices {
-  [symbol: string]: {
-    price: number;
-    change24h: number;
-  };
-}
-
-const COINGECKO_IDS: Record<string, string> = {
-  BTC: "bitcoin",
-  ETH: "ethereum",
-  SOL: "solana",
-  BNB: "binancecoin",
-  ADA: "cardano",
-  DOGE: "dogecoin",
-};
-
-// 🔥 5 SEGUNDOS (IDEAL)
-const REFRESH_INTERVAL = 5000;
+const CACHE_KEY = "crypto-prices-cache";
 
 export function useCryptoPrices() {
-  const [prices, setPrices] = useState<CryptoPrices>({});
+  const [prices, setPrices] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchPrices = useCallback(async () => {
+  const fetchPrices = async () => {
     try {
-      setLoading(true);
-
-      const ids = Object.values(COINGECKO_IDS).join(",");
-
       const res = await fetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`
+        "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana,binancecoin,cardano,dogecoin&vs_currencies=usd&include_24hr_change=true"
       );
 
-      if (!res.ok) {
-        throw new Error(`CoinGecko API error: ${res.status}`);
-      }
+      const data = await res.json();
 
-      const data: Record<string, CoinGeckoPrice> = await res.json();
+      const formatted = {
+        BTC: {
+          price: data.bitcoin.usd,
+          change24h: data.bitcoin.usd_24h_change,
+        },
+        ETH: {
+          price: data.ethereum.usd,
+          change24h: data.ethereum.usd_24h_change,
+        },
+        SOL: {
+          price: data.solana.usd,
+          change24h: data.solana.usd_24h_change,
+        },
+        BNB: {
+          price: data.binancecoin.usd,
+          change24h: data.binancecoin.usd_24h_change,
+        },
 
-      const mapped: CryptoPrices = {};
+        // 🔥 ADICIONAR
+        ADA: {
+          price: data.cardano.usd,
+          change24h: data.cardano.usd_24h_change,
+        },
+        DOGE: {
+          price: data.dogecoin.usd,
+          change24h: data.dogecoin.usd_24h_change,
+        },
+      };
 
-      for (const [symbol, geckoId] of Object.entries(COINGECKO_IDS)) {
-        if (data[geckoId]) {
-          mapped[symbol] = {
-            price: data[geckoId].usd,
-            change24h: data[geckoId].usd_24h_change ?? 0,
-          };
-        }
-      }
+      setPrices(formatted);
+      setLastUpdated(new Date());
+      setLoading(false);
 
-      // 🔥 só atualiza se tiver dados reais
-      if (Object.keys(mapped).length > 0) {
-        setPrices(mapped);
-        setLastUpdated(new Date());
-        setError(null);
-      }
+      // 🔥 salva cache
+      localStorage.setItem(
+        CACHE_KEY,
+        JSON.stringify({
+          data: formatted,
+          timestamp: Date.now(),
+        })
+      );
     } catch (err) {
-      console.error("Failed to fetch crypto prices:", err);
-      setError(err instanceof Error ? err.message : "Erro ao buscar preços");
-    } finally {
+      console.error("Erro ao buscar preços:", err);
       setLoading(false);
     }
-  }, []);
+  };
 
   useEffect(() => {
-    fetchPrices(); // 🔥 pega na hora
+    // 🔥 carrega cache primeiro (instantâneo)
+    const cached = localStorage.getItem(CACHE_KEY);
 
-    const interval = setInterval(fetchPrices, REFRESH_INTERVAL);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
 
+        setPrices(parsed.data);
+        setLastUpdated(new Date(parsed.timestamp));
+        setLoading(false);
+      } catch { }
+    }
+
+    // 🔥 depois atualiza com API
+    fetchPrices();
+
+    const interval = setInterval(fetchPrices, 5000);
     return () => clearInterval(interval);
-  }, [fetchPrices]);
+  }, []);
 
-  return { prices, loading, lastUpdated, error, refetch: fetchPrices };
+  return { prices, loading, lastUpdated, refetch: fetchPrices };
 }

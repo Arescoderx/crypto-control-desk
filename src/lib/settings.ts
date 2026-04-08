@@ -1,47 +1,102 @@
-const STORAGE_KEY = "crypto-db";
+import { getDB, getDefaultDB, saveDB } from "./db";
+import type { Strategy, DB } from "@/types/db";
 
+// 🔄 RESET TOTAL
 export function resetAccount() {
-  const defaultData = {
-    wallet: {
-      balance: 100000,
-      currency: "USD",
-    },
-    holdings: [],
-    trades: [],
+  const fresh = getDefaultDB();
+  saveDB(fresh);
+}
+
+// 💰 ATUALIZA SALDO
+export function updateBalance(newBalance: number) {
+  const db: DB = getDB();
+  db.wallet.balance = newBalance;
+  saveDB(db);
+}
+
+// 💱 ALTERA MOEDA
+export function updateCurrency(currency: "USD" | "BRL") {
+  const db: DB = getDB();
+  db.wallet.currency = currency;
+  saveDB(db);
+}
+
+// 🧹 LIMPA TRADES
+export function clearTrades() {
+  const db: DB = getDB();
+  db.trades = [];
+  saveDB(db);
+}
+
+// 🤖 TOGGLE BOT
+export function toggleBot() {
+  const db: DB = getDB();
+
+  const nextState = !db.bot.active;
+
+  db.bot.active = nextState;
+  db.bot.startedAt = nextState ? new Date().toISOString() : null;
+
+  saveDB(db);
+}
+
+// 🔥 CRIAR ESTRATÉGIA
+export function createStrategy(name: string) {
+  const db: DB = getDB();
+
+  const newStrategy: Strategy = {
+    id: crypto.randomUUID(),
+    name: name || "Nova Estratégia",
+    active: false,
+    risk: 0.1,
+    minChange: 0.5,
+    takeProfit: 2,
+    stopLoss: 2,
+    maxAllocationPerCoin: 0.3,
+    minTradeValue: 10,
   };
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(defaultData));
+  db.strategies.push(newStrategy);
+  saveDB(db);
 }
 
-export function updateBalance(newBalance: number) {
-  const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+// 🔥 ATIVAR / DESATIVAR
+export function toggleStrategy(id: string) {
+  const db: DB = getDB();
 
-  data.wallet = data.wallet || {};
-  data.wallet.balance = newBalance;
+  const s = db.strategies.find((s) => s.id === id);
+  if (!s) return;
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  s.active = !s.active;
+
+  saveDB(db);
 }
 
-export function updateCurrency(currency: "USD" | "BRL") {
-  const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+// 🔥 ATUALIZAR ESTRATÉGIA (ESSENCIAL)
+export function updateStrategy(id: string, data: Partial<Strategy>) {
+  const db: DB = getDB();
 
-  data.wallet = data.wallet || {};
-  data.wallet.currency = currency;
+  const s = db.strategies.find((s) => s.id === id);
+  if (!s) return;
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  Object.assign(s, data);
+
+  saveDB(db);
 }
 
-export function clearTrades() {
-  const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+// 🔥 DELETAR ESTRATÉGIA
+export function deleteStrategy(id: string) {
+  const db: DB = getDB();
 
-  data.trades = [];
+  db.strategies = db.strategies.filter((s) => s.id !== id);
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  saveDB(db);
 }
 
+// 📤 EXPORT CSV
 export function exportData() {
-  const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-  const trades = data.trades || [];
+  const db = getDB();
+  const trades = db.trades || [];
 
   if (trades.length === 0) {
     alert("Nenhum trade para exportar");
@@ -57,6 +112,7 @@ export function exportData() {
     "Total",
     "P&L",
     "Status",
+    "Origem",
   ];
 
   const rows = trades.map((t: any) => [
@@ -68,18 +124,23 @@ export function exportData() {
     t.total,
     t.pnl ?? "",
     t.status || "completed",
+    t.source || "manual",
   ]);
 
-  const csvContent =
-    [headers, ...rows]
-      .map((row) => row.join(";"))
-      .join("\n");
+  const csvContent = [headers, ...rows]
+    .map((row) => row.join(";"))
+    .join("\n");
 
-  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const blob = new Blob([csvContent], {
+    type: "text/csv;charset=utf-8;",
+  });
+
   const url = URL.createObjectURL(blob);
 
   const a = document.createElement("a");
   a.href = url;
   a.download = "trades.csv";
   a.click();
+
+  URL.revokeObjectURL(url);
 }

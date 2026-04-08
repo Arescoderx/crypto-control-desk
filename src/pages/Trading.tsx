@@ -26,10 +26,6 @@ export default function Trading() {
 
   const { prices, loading, lastUpdated, refetch } = useCryptoPrices();
 
-  // 🔥 evita crash se API ainda não carregou
-  if (!prices || Object.keys(prices).length === 0) {
-    return <div className="p-6">Carregando preços...</div>;
-  }
 
   const enrichedCoins = COINS.map((coin) => {
     const live = prices[coin.symbol];
@@ -78,6 +74,14 @@ export default function Trading() {
 
   return (
     <div className="space-y-6">
+
+      {/* 🔥 LOADING SUAVE */}
+      {loading && Object.keys(prices).length === 0 && (
+        <div className="text-sm text-muted-foreground">
+          Carregando preços...
+        </div>
+      )}
+
       {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
@@ -121,11 +125,10 @@ export default function Trading() {
               <motion.button
                 key={coin.symbol}
                 onClick={() => setSelectedSymbol(coin.symbol)}
-                className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${
-                  selectedSymbol === coin.symbol
+                className={`w-full flex items-center justify-between p-3 rounded-lg transition-colors ${selectedSymbol === coin.symbol
                     ? "bg-primary/10 border border-primary/30"
                     : "hover:bg-accent/50"
-                }`}
+                  }`}
                 whileTap={{ scale: 0.98 }}
               >
                 <div className="flex items-center gap-3">
@@ -144,16 +147,15 @@ export default function Trading() {
                     $
                     {coin.price
                       ? coin.price.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
                       : "--"}
                   </p>
 
                   <p
-                    className={`text-xs font-mono flex items-center justify-end gap-0.5 ${
-                      coin.change24h >= 0 ? "text-profit" : "text-loss"
-                    }`}
+                    className={`text-xs font-mono flex items-center justify-end gap-0.5 ${coin.change24h >= 0 ? "text-profit" : "text-loss"
+                      }`}
                   >
                     {coin.change24h >= 0 ? (
                       <ArrowUpRight className="h-3 w-3" />
@@ -185,9 +187,9 @@ export default function Trading() {
                     $
                     {currentPrice
                       ? currentPrice.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
                       : "--"}
                   </p>
                 </div>
@@ -195,11 +197,10 @@ export default function Trading() {
 
               <Badge
                 variant="outline"
-                className={`${
-                  currentCoin.change24h >= 0
+                className={`${currentCoin.change24h >= 0
                     ? "border-profit text-profit"
                     : "border-loss text-loss"
-                }`}
+                  }`}
               >
                 {currentCoin.change24h >= 0 ? "+" : ""}
                 {currentCoin.change24h.toFixed(2)}%

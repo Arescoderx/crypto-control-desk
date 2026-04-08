@@ -1,30 +1,60 @@
 import { getDB, saveDB } from "./db";
 
-export function updatePortfolioHistory(prices: any) {
+export function calculatePortfolioValue(prices: Record<string, any>) {
   const db = getDB();
 
-  const holdings = db.holdings || [];
   const balance = db.wallet?.balance || 0;
+  const holdings = db.holdings || [];
 
-  let portfolioValue = balance;
+  const holdingsValue = holdings.reduce((sum: number, holding: any) => {
+    const livePrice = prices?.[holding.symbol]?.price || holding.avgPrice || 0;
+    return sum + holding.amount * livePrice;
+  }, 0);
 
-  holdings.forEach((h: any) => {
-    const live = prices[h.symbol];
-    const price = live?.price || h.avgPrice;
+  return balance + holdingsValue;
+}
 
-    portfolioValue += h.amount * price;
+export function updatePortfolioHistory(
+  prices: Record<string, any>,
+  force = false
+) {
+  if (!prices || Object.keys(prices).length === 0) return;
+
+  const db = getDB();
+  const portfolioValue = calculatePortfolioValue(prices);
+
+  db.history = Array.isArray(db.history) ? db.history : [];
+
+  const now = new Date();
+  const label = now.toLocaleTimeString("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
   });
 
-  db.history = db.history || [];
+  const lastPoint = db.history[db.history.length - 1];
+
+  if (!force && lastPoint) {
+    const lastTimestamp = new Date(lastPoint.timestamp).getTime();
+    const secondsSinceLast = (Date.now() - lastTimestamp) / 1000;
+    const percentageDiff =
+      lastPoint.value > 0
+        ? Math.abs(((portfolioValue - lastPoint.value) / lastPoint.value) * 100)
+        : 0;
+
+    // Evita gravar ponto toda hora sem necessidade
+    if (secondsSinceLast < 15 && percentageDiff < 0.05) {
+      return;
+    }
+  }
 
   db.history.push({
-    date: new Date().toLocaleTimeString(),
-    value: portfolioValue,
+    timestamp: now.toISOString(),
+    label,
+    value: Number(portfolioValue.toFixed(2)),
   });
 
-  // 🔥 limita histórico (últimos 50 pontos)
-  if (db.history.length > 50) {
-    db.history.shift();
+  if (db.history.length > 120) {
+    db.history = db.history.slice(-120);
   }
 
   saveDB(db);
