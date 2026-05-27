@@ -11,6 +11,7 @@ import Trading from "./pages/Trading";
 import Analysis from "./pages/Analysis";
 import Strategies from "./pages/Strategies";
 import TradeHistory from "./pages/TradeHistory";
+import Reports from "./pages/Reports";
 import SettingsPage from "./pages/SettingsPage";
 import NotFound from "./pages/NotFound";
 
@@ -78,6 +79,14 @@ function App() {
               element={
                 <AppLayout>
                   <TradeHistory />
+                </AppLayout>
+              }
+            />
+            <Route
+              path="/reports"
+              element={
+                <AppLayout>
+                  <Reports />
                 </AppLayout>
               }
             />

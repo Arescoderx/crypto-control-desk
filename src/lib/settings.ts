@@ -1,6 +1,8 @@
 import { getDB, getDefaultDB, saveDB } from "./db";
 import type { Strategy, DB } from "@/types/db";
 
+const ALLOWED_SYMBOLS = ["BTC", "ETH", "BNB", "DOGE", "ADA", "SOL"];
+
 // 🔄 RESET TOTAL
 export function resetAccount() {
   const fresh = getDefaultDB();
@@ -28,6 +30,12 @@ export function clearTrades() {
   saveDB(db);
 }
 
+export function clearSignals() {
+  const db: DB = getDB();
+  db.signals = [];
+  saveDB(db);
+}
+
 // 🤖 TOGGLE BOT
 export function toggleBot() {
   const db: DB = getDB();
@@ -40,14 +48,17 @@ export function toggleBot() {
   saveDB(db);
 }
 
-// 🔥 CRIAR ESTRATÉGIA
+// ======================
+// 🔥 CRIAR ESTRATÉGIA (FIXADO)
+// ======================
 export function createStrategy(name: string) {
   const db: DB = getDB();
 
   const newStrategy: Strategy = {
-    id: crypto.randomUUID(),
-    name: name || "Nova Estratégia",
-    active: false,
+    id: `strategy_${Date.now()}`, // 🔥 ALTERADO
+    name: name || `Estratégia ${db.strategies.length + 1}`,
+    active: true,
+    symbols: ["BTC"],
     risk: 0.1,
     minChange: 0.5,
     takeProfit: 2,
@@ -58,9 +69,13 @@ export function createStrategy(name: string) {
 
   db.strategies.push(newStrategy);
   saveDB(db);
+
+  return newStrategy;
 }
 
-// 🔥 ATIVAR / DESATIVAR
+// ======================
+// 🔘 TOGGLE
+// ======================
 export function toggleStrategy(id: string) {
   const db: DB = getDB();
 
@@ -72,19 +87,35 @@ export function toggleStrategy(id: string) {
   saveDB(db);
 }
 
-// 🔥 ATUALIZAR ESTRATÉGIA (ESSENCIAL)
+// ======================
+// ✏️ UPDATE
+// ======================
 export function updateStrategy(id: string, data: Partial<Strategy>) {
   const db: DB = getDB();
 
   const s = db.strategies.find((s) => s.id === id);
   if (!s) return;
 
-  Object.assign(s, data);
+  const nextData = { ...data };
+
+  if (nextData.symbols) {
+    nextData.symbols = nextData.symbols.filter((symbol) =>
+      ALLOWED_SYMBOLS.includes(symbol)
+    );
+
+    if (nextData.symbols.length === 0) {
+      nextData.symbols = s.symbols;
+    }
+  }
+
+  Object.assign(s, nextData);
 
   saveDB(db);
 }
 
-// 🔥 DELETAR ESTRATÉGIA
+// ======================
+// ❌ DELETE
+// ======================
 export function deleteStrategy(id: string) {
   const db: DB = getDB();
 
@@ -143,4 +174,59 @@ export function exportData() {
   a.click();
 
   URL.revokeObjectURL(url);
+}
+
+export function exportJson() {
+  const db = getDB();
+  const blob = new Blob([JSON.stringify(db, null, 2)], {
+    type: "application/json;charset=utf-8;",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "crypto-control-desk-data.json";
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+export function importJson(json: string) {
+  const parsed = JSON.parse(json);
+
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("JSON invalido");
+  }
+
+  const current = getDB();
+  const next: DB = {
+    ...current,
+    ...parsed,
+    wallet: {
+      ...current.wallet,
+      ...(parsed.wallet || {}),
+    },
+    bot: {
+      ...current.bot,
+      ...(parsed.bot || {}),
+    },
+    holdings: Array.isArray(parsed.holdings) ? parsed.holdings : current.holdings,
+    trades: Array.isArray(parsed.trades) ? parsed.trades : current.trades,
+    signals: Array.isArray(parsed.signals) ? parsed.signals : current.signals,
+    history: Array.isArray(parsed.history) ? parsed.history : current.history,
+    strategies: Array.isArray(parsed.strategies)
+      ? parsed.strategies.map((strategy: Strategy) => {
+          const symbols = Array.isArray(strategy.symbols)
+            ? strategy.symbols.filter((symbol) => ALLOWED_SYMBOLS.includes(symbol))
+            : ["BTC"];
+
+          return {
+            ...strategy,
+            symbols: symbols.length > 0 ? symbols : ["BTC"],
+          };
+        })
+      : current.strategies,
+  };
+
+  saveDB(next);
 }

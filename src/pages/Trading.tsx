@@ -8,6 +8,8 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight, ArrowDownRight, RefreshCw } from "lucide-react";
 import { executeTrade } from "@/lib/trading";
+import { getDB } from "@/lib/db";
+import { formatMoney, getCurrency } from "@/lib/currency";
 import { toast } from "sonner";
 
 // 🔥 moedas fixas (SEM MOCK QUEBRADO)
@@ -25,6 +27,7 @@ export default function Trading() {
   const [amount, setAmount] = useState("");
 
   const { prices, loading, lastUpdated, refetch } = useCryptoPrices();
+  const currency = getCurrency(getDB());
 
 
   const enrichedCoins = COINS.map((coin) => {
@@ -144,13 +147,7 @@ export default function Trading() {
 
                 <div className="text-right">
                   <p className="text-sm font-mono">
-                    $
-                    {coin.price
-                      ? coin.price.toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })
-                      : "--"}
+                    {coin.price ? formatMoney(coin.price, currency) : "--"}
                   </p>
 
                   <p
@@ -184,13 +181,7 @@ export default function Trading() {
                   </CardTitle>
 
                   <p className="text-2xl font-bold font-mono text-primary">
-                    $
-                    {currentPrice
-                      ? currentPrice.toLocaleString("en-US", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })
-                      : "--"}
+                    {currentPrice ? formatMoney(currentPrice, currency) : "--"}
                   </p>
                 </div>
               </div>
@@ -217,7 +208,7 @@ export default function Trading() {
 
               {(["buy", "sell"] as const).map((type) => (
                 <TabsContent key={type} value={type} className="space-y-4 mt-4">
-                  <Input value={currentPrice.toFixed(2)} readOnly />
+                  <Input value={formatMoney(currentPrice, currency)} readOnly />
 
                   <Input
                     type="number"
@@ -227,7 +218,7 @@ export default function Trading() {
                   />
 
                   <div className="text-sm text-muted-foreground">
-                    Total: ${total.toFixed(2)}
+                    Total: {formatMoney(total, currency)}
                   </div>
 
                   <Button

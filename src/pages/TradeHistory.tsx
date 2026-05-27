@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { getDB } from "@/lib/db";
+import { formatMoney, getCurrency } from "@/lib/currency";
 import { useState, useMemo, useEffect } from "react";
 import { Search, Filter } from "lucide-react";
 
@@ -30,11 +31,13 @@ export default function TradeHistory() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [trades, setTrades] = useState<TradeItem[]>([]);
+  const [currency, setCurrency] = useState<"USD" | "BRL">("USD");
 
   useEffect(() => {
     const db = getDB();
     const storedTrades = Array.isArray(db?.trades) ? db.trades : [];
     setTrades(storedTrades);
+    setCurrency(getCurrency(db));
   }, []);
 
   const normalizedTrades = useMemo(() => {
@@ -96,7 +99,7 @@ export default function TradeHistory() {
                 totalPnl >= 0 ? "text-profit" : "text-loss"
               }`}
             >
-              {totalPnl >= 0 ? "+" : ""}${totalPnl.toFixed(2)}
+              {totalPnl >= 0 ? "+" : ""}{formatMoney(totalPnl, currency)}
             </p>
           </CardContent>
         </Card>
@@ -193,11 +196,7 @@ export default function TradeHistory() {
                       </td>
 
                       <td className="p-4 text-right font-mono">
-                        $
-                        {trade.price.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                        {formatMoney(trade.price, currency)}
                       </td>
 
                       <td className="p-4 text-right font-mono">
@@ -208,11 +207,7 @@ export default function TradeHistory() {
                       </td>
 
                       <td className="p-4 text-right font-mono">
-                        $
-                        {trade.total.toLocaleString("en-US", {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })}
+                        {formatMoney(trade.total, currency)}
                       </td>
 
                       <td
@@ -225,8 +220,9 @@ export default function TradeHistory() {
                         }`}
                       >
                         {typeof trade.pnl === "number"
-                          ? `${trade.pnl >= 0 ? "+" : ""}$${trade.pnl.toFixed(
-                              2
+                          ? `${trade.pnl >= 0 ? "+" : ""}${formatMoney(
+                              trade.pnl,
+                              currency
                             )}`
                           : "—"}
                       </td>

@@ -6,18 +6,23 @@ export function executeTrade({
   type,
   price,
   amount,
+  source,
 }: {
   symbol: string;
   name: string;
   type: "buy" | "sell";
   price: number;
   amount: number;
+  source?: string; // 🔥 NOVO (não quebra nada)
 }) {
   const db = getDB();
   const total = price * amount;
 
   let pnl = undefined;
 
+  // ======================
+  // 🟢 BUY
+  // ======================
   if (type === "buy") {
     if (db.wallet.balance < total) {
       throw new Error("Saldo insuficiente");
@@ -44,6 +49,9 @@ export function executeTrade({
     }
   }
 
+  // ======================
+  // 🔴 SELL
+  // ======================
   if (type === "sell") {
     const existing = db.holdings.find((h: any) => h.symbol === symbol);
 
@@ -61,6 +69,9 @@ export function executeTrade({
     }
   }
 
+  // ======================
+  // 🧾 REGISTRO DO TRADE
+  // ======================
   db.trades.unshift({
     id: Date.now(),
     symbol,
@@ -72,6 +83,9 @@ export function executeTrade({
     date: new Date().toISOString(),
     status: "completed",
     pnl,
+
+    // 🔥 IMPORTANTE: identifica de qual estratégia veio
+    source: source || "manual",
   });
 
   saveDB(db);

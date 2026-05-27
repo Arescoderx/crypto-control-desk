@@ -1,197 +1,388 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useCryptoPrices } from "@/hooks/useCryptoPrices";
-import { coins } from "@/lib/mock-data";
-import { supabase } from "@/integrations/supabase/client";
-import { Brain, Sparkles, RefreshCw, AlertTriangle } from "lucide-react";
-import { motion } from "framer-motion";
-import ReactMarkdown from "react-markdown";
+import { getDB, saveDB } from "@/lib/db";
+import { convertToUsd, formatMoney, getCurrency } from "@/lib/currency";
+import { executeTrade } from "@/lib/trading";
+import type { ExternalSignal, SignalAction } from "@/types/db";
+import { CheckCircle2, Clock, ClipboardList, Play, XCircle } from "lucide-react";
+import { toast } from "sonner";
+
+const COINS = [
+  { symbol: "BTC", name: "Bitcoin" },
+  { symbol: "ETH", name: "Ethereum" },
+  { symbol: "SOL", name: "Solana" },
+  { symbol: "BNB", name: "BNB" },
+  { symbol: "ADA", name: "Cardano" },
+  { symbol: "DOGE", name: "Dogecoin" },
+];
+
+function getSignalStatus(signal: ExternalSignal) {
+  if (signal.status === "executed") {
+    return { label: "Executado", icon: CheckCircle2, className: "text-profit border-profit" };
+  }
+
+  if (signal.status === "ignored") {
+    return { label: "Ignorado", icon: XCircle, className: "text-muted-foreground border-border" };
+  }
+
+  return { label: "Pendente", icon: Clock, className: "text-primary border-primary" };
+}
 
 export default function Analysis() {
-  const { prices, loading: pricesLoading } = useCryptoPrices();
-  const [analysis, setAnalysis] = useState("");
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { prices, loading } = useCryptoPrices();
+  const [signals, setSignals] = useState<ExternalSignal[]>(() => getDB().signals || []);
+  const [currency, setCurrency] = useState<"USD" | "BRL">(() =>
+    getCurrency(getDB())
+  );
+  const [symbol, setSymbol] = useState("BTC");
+  const [action, setAction] = useState<SignalAction>("buy");
+  const [amountUsd, setAmountUsd] = useState("100");
+  const [takeProfit, setTakeProfit] = useState("");
+  const [stopLoss, setStopLoss] = useState("");
+  const [confidence, setConfidence] = useState("");
+  const [notes, setNotes] = useState("");
 
-  const enrichedCoins = coins.map((coin) => {
-    const live = prices[coin.symbol];
-    return {
-      symbol: coin.symbol,
-      name: coin.name,
-      price: live?.price ?? coin.price,
-      change24h: live?.change24h ?? coin.change24h,
-    };
-  });
+  const selectedCoin = COINS.find((coin) => coin.symbol === symbol) || COINS[0];
+  const currentPrice = prices[symbol]?.price || 0;
 
-  const runAnalysis = async () => {
-    setIsAnalyzing(true);
-    setAnalysis("");
-    setError(null);
+  const pendingCount = useMemo(
+    () => signals.filter((signal) => signal.status === "pending").length,
+    [signals]
+  );
 
-    try {
-      const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/market-analysis`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
-          },
-          body: JSON.stringify({ coins: enrichedCoins }),
-        }
-      );
+  const reloadSignals = () => {
+    const db = getDB();
+    setSignals([...(db.signals || [])]);
+    setCurrency(getCurrency(db));
+  };
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Erro ao gerar análise");
-      }
+  const saveSignal = () => {
+    const price = Number(currentPrice);
 
-      if (!response.body) throw new Error("Stream não disponível");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let fullText = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        let newlineIndex: number;
-        while ((newlineIndex = buffer.indexOf("\n")) !== -1) {
-          let line = buffer.slice(0, newlineIndex);
-          buffer = buffer.slice(newlineIndex + 1);
-
-          if (line.endsWith("\r")) line = line.slice(0, -1);
-          if (line.startsWith(":") || line.trim() === "") continue;
-          if (!line.startsWith("data: ")) continue;
-
-          const jsonStr = line.slice(6).trim();
-          if (jsonStr === "[DONE]") break;
-
-          try {
-            const parsed = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              fullText += content;
-              setAnalysis(fullText);
-            }
-          } catch {
-            buffer = line + "\n" + buffer;
-            break;
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Analysis error:", err);
-      setError(err instanceof Error ? err.message : "Erro ao gerar análise");
-    } finally {
-      setIsAnalyzing(false);
+    if (!price) {
+      toast.error("Preco ainda nao disponivel para esse ativo");
+      return;
     }
+
+    const signal: ExternalSignal = {
+      id: `signal_${Date.now()}`,
+      symbol,
+      name: selectedCoin.name,
+      action,
+      price,
+      amountUsd:
+        Number(amountUsd) > 0 ? convertToUsd(Number(amountUsd), currency) : undefined,
+      takeProfit: Number(takeProfit) > 0 ? Number(takeProfit) : undefined,
+      stopLoss: Number(stopLoss) > 0 ? Number(stopLoss) : undefined,
+      confidence: Number(confidence) > 0 ? Number(confidence) : undefined,
+      notes: notes.trim() || undefined,
+      status: action === "hold" ? "ignored" : "pending",
+      createdAt: new Date().toISOString(),
+    };
+
+    const db = getDB();
+    db.signals = [signal, ...(db.signals || [])];
+    saveDB(db);
+
+    setNotes("");
+    setTakeProfit("");
+    setStopLoss("");
+    setConfidence("");
+    reloadSignals();
+    toast.success("Sinal salvo no JSON");
+  };
+
+  const executeSignal = (signal: ExternalSignal) => {
+    try {
+      if (signal.status !== "pending") return;
+
+      const livePrice = prices[signal.symbol]?.price || signal.price;
+      const db = getDB();
+      const holding = db.holdings.find((item) => item.symbol === signal.symbol);
+
+      const amount =
+        signal.action === "buy"
+          ? (signal.amountUsd || 0) / livePrice
+          : signal.amount || holding?.amount || 0;
+
+      if (!amount || amount <= 0) {
+        toast.error("Quantidade invalida para executar o sinal");
+        return;
+      }
+
+      executeTrade({
+        symbol: signal.symbol,
+        name: signal.name,
+        type: signal.action,
+        price: livePrice,
+        amount,
+        source: signal.id,
+      });
+
+      const updated = getDB();
+      const storedSignal = updated.signals.find((item) => item.id === signal.id);
+
+      if (storedSignal) {
+        storedSignal.status = "executed";
+        storedSignal.executedAt = new Date().toISOString();
+      }
+
+      saveDB(updated);
+      reloadSignals();
+      toast.success("Sinal executado");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro ao executar sinal");
+    }
+  };
+
+  const ignoreSignal = (signalId: string) => {
+    const db = getDB();
+    const signal = db.signals.find((item) => item.id === signalId);
+
+    if (!signal) return;
+
+    signal.status = "ignored";
+    saveDB(db);
+    reloadSignals();
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-display">Análise de Mercado</h1>
-          <p className="text-muted-foreground text-sm">Análise inteligente com IA em tempo real</p>
+          <h1 className="text-2xl font-bold font-display">Sinais Externos</h1>
+          <p className="text-muted-foreground text-sm">
+            Registre a estrategia recebida de terceiros e execute quando fizer sentido.
+          </p>
         </div>
-        <Button
-          onClick={runAnalysis}
-          disabled={isAnalyzing || pricesLoading}
-          className="glow-primary"
-        >
-          {isAnalyzing ? (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-              Analisando...
-            </>
-          ) : (
-            <>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Gerar Análise
-            </>
-          )}
-        </Button>
+
+        <Badge variant="outline" className="w-fit border-primary text-primary">
+          {pendingCount} pendente{pendingCount === 1 ? "" : "s"}
+        </Badge>
       </div>
 
-      {/* Current prices summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {enrichedCoins.map((coin) => (
-          <motion.div
-            key={coin.symbol}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <Card className="bg-card border-border">
-              <CardContent className="p-3 text-center">
-                <p className="text-xs text-muted-foreground">{coin.symbol}</p>
-                <p className="text-sm font-mono font-medium">
-                  ${coin.price.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <Badge
-                  variant="outline"
-                  className={`text-xs mt-1 ${coin.change24h >= 0 ? "border-profit text-profit" : "border-loss text-loss"}`}
-                >
-                  {coin.change24h >= 0 ? "+" : ""}{coin.change24h.toFixed(2)}%
-                </Badge>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Novo sinal
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Ativo</Label>
+                <Select value={symbol} onValueChange={setSymbol}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COINS.map((coin) => (
+                      <SelectItem key={coin.symbol} value={coin.symbol}>
+                        {coin.symbol}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Acao</Label>
+                <Select value={action} onValueChange={(value) => setAction(value as SignalAction)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="buy">Comprar</SelectItem>
+                    <SelectItem value="sell">Vender</SelectItem>
+                    <SelectItem value="hold">Aguardar</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Preco atual</Label>
+                <Input value={currentPrice ? formatMoney(currentPrice, currency) : "Carregando"} readOnly />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Valor da ordem</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={amountUsd}
+                  onChange={(event) => setAmountUsd(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-2">
+                <Label>TP %</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={takeProfit}
+                  onChange={(event) => setTakeProfit(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>SL %</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={stopLoss}
+                  onChange={(event) => setStopLoss(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Conf. %</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={confidence}
+                  onChange={(event) => setConfidence(event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Observacoes</Label>
+              <Textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Cole aqui a estrategia, justificativa ou regra recebida."
+              />
+            </div>
+
+            <Button className="w-full" onClick={saveSignal} disabled={loading && !currentPrice}>
+              <ClipboardList className="mr-2 h-4 w-4" />
+              Salvar sinal
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2 bg-card border-border">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Sinais salvos no JSON
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="space-y-3">
+            {signals.length > 0 ? (
+              signals.map((signal) => {
+                const status = getSignalStatus(signal);
+                const StatusIcon = status.icon;
+
+                return (
+                  <div
+                    key={signal.id}
+                    className="rounded-md border border-border p-4 space-y-3"
+                  >
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-mono font-medium">{signal.symbol}/USDT</p>
+                          <Badge
+                            variant="outline"
+                            className={
+                              signal.action === "buy"
+                                ? "border-profit text-profit"
+                                : signal.action === "sell"
+                                  ? "border-loss text-loss"
+                                  : "border-border text-muted-foreground"
+                            }
+                          >
+                            {signal.action === "buy"
+                              ? "Compra"
+                              : signal.action === "sell"
+                                ? "Venda"
+                                : "Aguardar"}
+                          </Badge>
+                          <Badge variant="outline" className={status.className}>
+                            <StatusIcon className="mr-1 h-3 w-3" />
+                            {status.label}
+                          </Badge>
+                        </div>
+
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(signal.createdAt).toLocaleString("pt-BR")} em{" "}
+                          {formatMoney(signal.price, currency)}
+                        </p>
+                      </div>
+
+                      {signal.status === "pending" && (
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => executeSignal(signal)}>
+                            <Play className="mr-2 h-4 w-4" />
+                            Executar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => ignoreSignal(signal.id)}
+                          >
+                            Ignorar
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Valor</p>
+                        <p>{signal.amountUsd ? formatMoney(signal.amountUsd, currency) : "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">TP</p>
+                        <p>{signal.takeProfit ? `${signal.takeProfit}%` : "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">SL</p>
+                        <p>{signal.stopLoss ? `${signal.stopLoss}%` : "-"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Confianca</p>
+                        <p>{signal.confidence ? `${signal.confidence}%` : "-"}</p>
+                      </div>
+                    </div>
+
+                    {signal.notes && (
+                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                        {signal.notes}
+                      </p>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                Nenhum sinal cadastrado ainda.
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
-
-      {/* Analysis result */}
-      {error && (
-        <Card className="bg-card border-loss/30">
-          <CardContent className="p-4 flex items-center gap-3">
-            <AlertTriangle className="h-5 w-5 text-loss shrink-0" />
-            <p className="text-sm text-loss">{error}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {(analysis || isAnalyzing) && (
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="bg-card border-border">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <Brain className="h-5 w-5 text-primary" />
-                <CardTitle className="text-sm font-medium">Análise IA</CardTitle>
-                {isAnalyzing && (
-                  <Badge variant="outline" className="text-xs border-primary text-primary animate-pulse">
-                    Gerando...
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="prose prose-sm prose-invert max-w-none [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_li]:text-muted-foreground [&_a]:text-primary">
-                <ReactMarkdown>{analysis || "⏳ Aguardando resposta da IA..."}</ReactMarkdown>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      )}
-
-      {!analysis && !isAnalyzing && !error && (
-        <Card className="bg-card border-border border-dashed">
-          <CardContent className="p-12 flex flex-col items-center justify-center text-center">
-            <Brain className="h-12 w-12 text-muted-foreground/30 mb-4" />
-            <h3 className="text-lg font-medium text-muted-foreground mb-1">
-              Nenhuma análise gerada
-            </h3>
-            <p className="text-sm text-muted-foreground/70 max-w-md">
-              Clique em "Gerar Análise" para que a IA analise o mercado atual com base nos preços reais das moedas.
-            </p>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

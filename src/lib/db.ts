@@ -1,9 +1,9 @@
 import type { DB } from "@/types/db";
 
 const STORAGE_KEY = "crypto-db";
+const ALLOWED_SYMBOLS = ["BTC", "ETH", "BNB", "DOGE", "ADA", "SOL"];
 
 export function getDefaultDB(): DB {
-
   return {
     wallet: {
       balance: 100000,
@@ -14,6 +14,8 @@ export function getDefaultDB(): DB {
 
     trades: [],
 
+    signals: [],
+
     history: [],
 
     strategies: [
@@ -21,6 +23,7 @@ export function getDefaultDB(): DB {
         id: "default",
         name: "Estratégia Padrão",
         active: true,
+        symbols: ["BTC"],
         risk: 0.1,
         minChange: 0.3,
         takeProfit: 2,
@@ -34,6 +37,11 @@ export function getDefaultDB(): DB {
       active: false,
       startedAt: null,
       lastActionBySymbol: {},
+
+      // 🔥 NOVOS CAMPOS (NÃO QUEBRA NADA)
+      lastActionByStrategySymbol: {},
+      priceHistoryBySymbol: {},
+      positionsByStrategy: {},
     },
   };
 }
@@ -54,16 +62,37 @@ function normalizeDB(raw: any): DB {
           : defaults.wallet.currency,
     },
 
-    holdings: Array.isArray(raw?.holdings) ? raw.holdings : defaults.holdings,
+    holdings: Array.isArray(raw?.holdings)
+      ? raw.holdings
+      : defaults.holdings,
 
-    trades: Array.isArray(raw?.trades) ? raw.trades : defaults.trades,
+    trades: Array.isArray(raw?.trades)
+      ? raw.trades
+      : defaults.trades,
 
-    history: Array.isArray(raw?.history) ? raw.history : defaults.history,
+    signals: Array.isArray(raw?.signals)
+      ? raw.signals
+      : defaults.signals,
+
+    history: Array.isArray(raw?.history)
+      ? raw.history
+      : defaults.history,
 
     strategies: Array.isArray(raw?.strategies)
-      ? raw.strategies
+      ? raw.strategies.map((strategy: any) => {
+          const selectedSymbols = Array.isArray(strategy?.symbols)
+            ? strategy.symbols.filter((symbol: string) =>
+                ALLOWED_SYMBOLS.includes(symbol)
+              )
+            : ["BTC"];
+
+          return {
+            ...strategy,
+            symbols: selectedSymbols.length > 0 ? selectedSymbols : ["BTC"],
+          };
+        })
       : defaults.strategies,
-      
+
     bot: {
       active:
         typeof raw?.bot?.active === "boolean"
@@ -71,15 +100,35 @@ function normalizeDB(raw: any): DB {
           : defaults.bot.active,
 
       startedAt:
-        typeof raw?.bot?.startedAt === "string" || raw?.bot?.startedAt === null
+        typeof raw?.bot?.startedAt === "string" ||
+        raw?.bot?.startedAt === null
           ? raw.bot.startedAt
           : defaults.bot.startedAt,
 
       lastActionBySymbol:
         raw?.bot?.lastActionBySymbol &&
-          typeof raw.bot.lastActionBySymbol === "object"
+        typeof raw.bot.lastActionBySymbol === "object"
           ? raw.bot.lastActionBySymbol
           : defaults.bot.lastActionBySymbol,
+
+      // 🔥 NOVOS CAMPOS COM FALLBACK (IMPORTANTE)
+      lastActionByStrategySymbol:
+        raw?.bot?.lastActionByStrategySymbol &&
+        typeof raw.bot.lastActionByStrategySymbol === "object"
+          ? raw.bot.lastActionByStrategySymbol
+          : defaults.bot.lastActionByStrategySymbol,
+
+      priceHistoryBySymbol:
+        raw?.bot?.priceHistoryBySymbol &&
+        typeof raw.bot.priceHistoryBySymbol === "object"
+          ? raw.bot.priceHistoryBySymbol
+          : defaults.bot.priceHistoryBySymbol,
+
+      positionsByStrategy:
+        raw?.bot?.positionsByStrategy &&
+        typeof raw.bot.positionsByStrategy === "object"
+          ? raw.bot.positionsByStrategy
+          : defaults.bot.positionsByStrategy,
     },
   };
 }

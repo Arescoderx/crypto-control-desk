@@ -144,3 +144,62 @@
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
 }
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body {
+    background: white !important;
+    color: #111827 !important;
+  }
+
+  .no-print,
+  [data-sidebar="sidebar"],
+  header {
+    display: none !important;
+  }
+
+  main,
+  .print-report {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .print-report .bg-card,
+  .print-report .border-border {
+    background: white !important;
+    border-color: #d1d5db !important;
+    color: #111827 !important;
+    box-shadow: none !important;
+  }
+
+  .print-report .text-muted-foreground {
+    color: #4b5563 !important;
+  }
+
+  .print-report .text-profit {
+    color: #047857 !important;
+  }
+
+  .print-report .text-loss {
+    color: #b91c1c !important;
+  }
+
+  .print-report table {
+    border-collapse: collapse;
+    page-break-inside: auto;
+  }
+
+  .print-report tr {
+    page-break-inside: avoid;
+  }
+
+  .report-table th,
+  .report-table td {
+    border: 1px solid #d1d5db;
+  }
+}

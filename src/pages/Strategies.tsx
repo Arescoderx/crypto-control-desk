@@ -1,8 +1,8 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -10,44 +10,47 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Brain } from "lucide-react";
-
+import { Plus, Zap } from "lucide-react";
 import { getDB } from "@/lib/db";
+import { formatMoney, getCurrency } from "@/lib/currency";
 import {
   createStrategy,
   toggleStrategy,
   updateStrategy,
 } from "@/lib/settings";
-
 import type { Strategy } from "@/types/db";
+
+const COINS = [
+  { symbol: "BTC", name: "Bitcoin" },
+  { symbol: "ETH", name: "Ethereum" },
+  { symbol: "BNB", name: "BNB" },
+  { symbol: "DOGE", name: "Dogecoin" },
+  { symbol: "ADA", name: "Cardano" },
+  { symbol: "SOL", name: "Solana" },
+];
 
 export default function Strategies() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [currency, setCurrency] = useState<"USD" | "BRL">("USD");
 
   const load = () => {
-    setStrategies(getDB().strategies);
+    const db = getDB();
+    setStrategies([...db.strategies]);
+    setCurrency(getCurrency(db));
   };
 
   useEffect(() => {
     load();
   }, []);
 
-  // 🔥 CALCULAR P&L E TRADES
   const getStats = (strategyId: string) => {
     const db = getDB();
-
-    const trades = db.trades.filter(
-      (t) => t.source === strategyId
-    );
-
-    const pnl = trades.reduce((sum, t) => {
-      return sum + (t.pnl || 0);
-    }, 0);
+    const trades = db.trades.filter((trade) => trade.source === strategyId);
+    const pnl = trades.reduce((sum, trade) => sum + (trade.pnl || 0), 0);
 
     return {
       trades: trades.length,
@@ -55,16 +58,25 @@ export default function Strategies() {
     };
   };
 
+  const toggleSymbol = (strategy: Strategy, symbol: string) => {
+    const selected = strategy.symbols || [];
+    const nextSymbols = selected.includes(symbol)
+      ? selected.filter((item) => item !== symbol)
+      : [...selected, symbol];
+
+    if (nextSymbols.length === 0) return;
+
+    updateStrategy(strategy.id, { symbols: nextSymbols });
+    load();
+  };
+
   return (
     <div className="space-y-6">
-      {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-display">
-            Estratégias
-          </h1>
+          <h1 className="text-2xl font-bold font-display">Estrategias</h1>
           <p className="text-muted-foreground text-sm">
-            Configure suas estratégias de trading
+            Configure estrategias para moedas especificas.
           </p>
         </div>
 
@@ -72,66 +84,67 @@ export default function Strategies() {
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              Nova Estratégia
+              Nova estrategia
             </Button>
           </DialogTrigger>
 
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Criar Estratégia</DialogTitle>
+              <DialogTitle>Criar estrategia</DialogTitle>
             </DialogHeader>
 
             <div className="space-y-4 pt-4">
               <Input
-                placeholder="Nome da estratégia"
+                placeholder="Nome da estrategia"
                 value={newName}
-                onChange={(e) => setNewName(e.target.value)}
+                onChange={(event) => setNewName(event.target.value)}
               />
 
               <Button
                 className="w-full"
                 onClick={() => {
-                  createStrategy(newName);
+                  if (!newName.trim()) return;
+
+                  const created = createStrategy(newName);
+
                   setNewName("");
                   setDialogOpen(false);
-                  load();
+                  setStrategies((prev) => [...prev, created]);
                 }}
               >
-                Criar Estratégia
+                Criar estrategia
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* LISTA */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {strategies.map((s, i) => {
-          const stats = getStats(s.id);
+        {strategies.map((strategy, index) => {
+          const stats = getStats(strategy.id);
+          const selectedSymbols = strategy.symbols || ["BTC"];
 
           return (
             <motion.div
-              key={s.id}
+              key={strategy.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.05 }}
+              transition={{ delay: index * 0.05 }}
             >
               <Card
                 className={`bg-card border-border ${
-                  s.active ? "" : "opacity-60"
+                  strategy.active ? "" : "opacity-60"
                 }`}
               >
                 <CardContent className="p-5 space-y-4">
-
-                  {/* HEADER */}
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <Brain className="h-5 w-5 text-primary" />
+                  <div className="flex justify-between items-center gap-3">
+                    <div className="flex items-center gap-2 flex-1">
+                      <Zap className="h-5 w-5 text-primary shrink-0" />
                       <Input
-                        value={s.name}
-                        onChange={(e) => {
-                          updateStrategy(s.id, {
-                            name: e.target.value,
+                        value={strategy.name}
+                        onChange={(event) => {
+                          updateStrategy(strategy.id, {
+                            name: event.target.value,
                           });
                           load();
                         }}
@@ -140,25 +153,45 @@ export default function Strategies() {
                     </div>
 
                     <Switch
-                      checked={s.active}
+                      checked={strategy.active}
                       onCheckedChange={() => {
-                        toggleStrategy(s.id);
+                        toggleStrategy(strategy.id);
                         load();
                       }}
                     />
                   </div>
 
-                  {/* INPUTS COM LABEL */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Moedas desta estrategia
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {COINS.map((coin) => (
+                        <label
+                          key={coin.symbol}
+                          className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm"
+                        >
+                          <Checkbox
+                            checked={selectedSymbols.includes(coin.symbol)}
+                            onCheckedChange={() =>
+                              toggleSymbol(strategy, coin.symbol)
+                            }
+                          />
+                          <span className="font-mono">{coin.symbol}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
 
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-xs mb-1">💰 Risk</p>
+                      <p className="text-xs mb-1">Risco</p>
                       <Input
                         type="number"
-                        value={s.risk}
-                        onChange={(e) => {
-                          updateStrategy(s.id, {
-                            risk: Number(e.target.value),
+                        value={strategy.risk}
+                        onChange={(event) => {
+                          updateStrategy(strategy.id, {
+                            risk: Number(event.target.value),
                           });
                           load();
                         }}
@@ -169,30 +202,30 @@ export default function Strategies() {
                     </div>
 
                     <div>
-                      <p className="text-xs mb-1">📉 Min Change</p>
+                      <p className="text-xs mb-1">Min Change</p>
                       <Input
                         type="number"
-                        value={s.minChange}
-                        onChange={(e) => {
-                          updateStrategy(s.id, {
-                            minChange: Number(e.target.value),
+                        value={strategy.minChange}
+                        onChange={(event) => {
+                          updateStrategy(strategy.id, {
+                            minChange: Number(event.target.value),
                           });
                           load();
                         }}
                       />
                       <p className="text-[10px] text-muted-foreground">
-                        variação mínima (%)
+                        variacao minima (%)
                       </p>
                     </div>
 
                     <div>
-                      <p className="text-xs mb-1">🟢 TP</p>
+                      <p className="text-xs mb-1">TP</p>
                       <Input
                         type="number"
-                        value={s.takeProfit}
-                        onChange={(e) => {
-                          updateStrategy(s.id, {
-                            takeProfit: Number(e.target.value),
+                        value={strategy.takeProfit}
+                        onChange={(event) => {
+                          updateStrategy(strategy.id, {
+                            takeProfit: Number(event.target.value),
                           });
                           load();
                         }}
@@ -203,13 +236,13 @@ export default function Strategies() {
                     </div>
 
                     <div>
-                      <p className="text-xs mb-1">🔴 SL</p>
+                      <p className="text-xs mb-1">SL</p>
                       <Input
                         type="number"
-                        value={s.stopLoss}
-                        onChange={(e) => {
-                          updateStrategy(s.id, {
-                            stopLoss: Number(e.target.value),
+                        value={strategy.stopLoss}
+                        onChange={(event) => {
+                          updateStrategy(strategy.id, {
+                            stopLoss: Number(event.target.value),
                           });
                           load();
                         }}
@@ -219,49 +252,73 @@ export default function Strategies() {
                       </p>
                     </div>
 
+                    <div>
+                      <p className="text-xs mb-1">Max Allocation</p>
+                      <Input
+                        type="number"
+                        value={strategy.maxAllocationPerCoin}
+                        onChange={(event) => {
+                          updateStrategy(strategy.id, {
+                            maxAllocationPerCoin: Number(event.target.value),
+                          });
+                          load();
+                        }}
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        % maximo por moeda
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs mb-1">Min Trade</p>
+                      <Input
+                        type="number"
+                        value={strategy.minTradeValue}
+                        onChange={(event) => {
+                          updateStrategy(strategy.id, {
+                            minTradeValue: Number(event.target.value),
+                          });
+                          load();
+                        }}
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        valor minimo por trade
+                      </p>
+                    </div>
                   </div>
 
-                  {/* STATS IGUAL BOT */}
                   <div className="flex justify-between pt-2 text-sm">
+                    <div className="text-center">
+                      <p className="text-muted-foreground text-xs">Moedas</p>
+                      <p>{selectedSymbols.length}</p>
+                    </div>
 
                     <div className="text-center">
                       <p className="text-muted-foreground text-xs">SL</p>
-                      <p className="text-red-500">
-                        {s.stopLoss}%
-                      </p>
+                      <p className="text-red-500">{strategy.stopLoss}%</p>
                     </div>
 
                     <div className="text-center">
                       <p className="text-muted-foreground text-xs">TP</p>
-                      <p className="text-green-500">
-                        {s.takeProfit}%
-                      </p>
+                      <p className="text-green-500">{strategy.takeProfit}%</p>
                     </div>
 
                     <div className="text-center">
-                      <p className="text-muted-foreground text-xs">
-                        Trades
-                      </p>
+                      <p className="text-muted-foreground text-xs">Trades</p>
                       <p>{stats.trades}</p>
                     </div>
 
                     <div className="text-center">
-                      <p className="text-muted-foreground text-xs">
-                        P&L
-                      </p>
+                      <p className="text-muted-foreground text-xs">P&L</p>
                       <p
                         className={
-                          stats.pnl >= 0
-                            ? "text-green-500"
-                            : "text-red-500"
+                          stats.pnl >= 0 ? "text-green-500" : "text-red-500"
                         }
                       >
-                        ${stats.pnl.toFixed(2)}
+                        {formatMoney(stats.pnl, currency)}
                       </p>
                     </div>
-
                   </div>
-
                 </CardContent>
               </Card>
             </motion.div>

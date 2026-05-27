@@ -10,13 +10,7 @@ import { motion } from "framer-motion";
 import { getDB, saveDB } from "@/lib/db";
 import { runBot } from "@/lib/bot";
 import { updatePortfolioHistory } from "@/lib/chart";
-
-function formatMoney(value: number) {
-  return `$${value.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
+import { formatMoney, getCurrency } from "@/lib/currency";
 
 function formatBotUptime(startedAt: string | null) {
   if (!startedAt) return "0m";
@@ -65,6 +59,7 @@ export default function Dashboard() {
   const balance = dbData?.wallet?.balance || 0;
   const trades = dbData?.trades || [];
   const history = dbData?.history || [];
+  const currency = getCurrency(dbData);
 
   const enrichedHoldings = useMemo(() => {
     return holdings.map((h: any) => {
@@ -103,7 +98,8 @@ export default function Dashboard() {
   const totalPnl = realizedPnl + unrealizedPnl;
 
   const botActive = dbData?.bot?.active || false;
-  const activeStrategies = botActive ? 1 : 0;
+  const db = getDB();
+  const activeStrategies = db.strategies.filter((s) => s.active).length;
   const uptime = formatBotUptime(dbData?.bot?.startedAt || null);
 
   return (
@@ -139,7 +135,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Saldo Total"
-          value={formatMoney(totalBalance)}
+          value={formatMoney(totalBalance, currency)}
           change="Dinheiro + ativos"
           changeType="neutral"
           icon={Wallet}
@@ -147,7 +143,7 @@ export default function Dashboard() {
 
         <StatCard
           title="Saldo em Caixa"
-          value={formatMoney(balance)}
+          value={formatMoney(balance, currency)}
           change="Disponível"
           changeType="neutral"
           icon={Activity}
@@ -155,7 +151,7 @@ export default function Dashboard() {
 
         <StatCard
           title="Lucro Total"
-          value={`${totalPnl >= 0 ? "+" : ""}${formatMoney(totalPnl)}`}
+          value={`${totalPnl >= 0 ? "+" : ""}${formatMoney(totalPnl, currency)}`}
           change="Realizado + em aberto"
           changeType={totalPnl >= 0 ? "profit" : "loss"}
           icon={TrendingUp}
@@ -195,7 +191,7 @@ export default function Dashboard() {
 
                 <XAxis dataKey="date" axisLine={false} tickLine={false} />
                 <YAxis axisLine={false} tickLine={false} />
-                <Tooltip formatter={(value: any) => formatMoney(Number(value))} />
+                <Tooltip formatter={(value: any) => formatMoney(Number(value), currency)} />
 
                 <Area
                   type="monotone"
@@ -228,15 +224,15 @@ export default function Dashboard() {
                   <div>
                     <p className="font-medium">{coin.symbol}</p>
                     <p className="text-xs text-muted-foreground">
-                      {coin.amount.toFixed(6)} @ {formatMoney(coin.avgPrice)}
+                      {coin.amount.toFixed(6)} @ {formatMoney(coin.avgPrice, currency)}
                     </p>
                   </div>
 
                   <div className="text-right">
-                    <p className="font-medium">{formatMoney(coin.valueUSD)}</p>
+                    <p className="font-medium">{formatMoney(coin.valueUSD, currency)}</p>
                     <p className={`text-xs ${coin.pnl >= 0 ? "text-profit" : "text-loss"}`}>
                       {coin.pnl >= 0 ? "+" : ""}
-                      {formatMoney(coin.pnl)}
+                      {formatMoney(coin.pnl, currency)}
                     </p>
                   </div>
                 </motion.div>
@@ -286,20 +282,20 @@ export default function Dashboard() {
                     </Badge>
                   </td>
 
-                  <td className="text-right">{formatMoney(t.price)}</td>
+                  <td className="text-right">{formatMoney(t.price, currency)}</td>
                   <td className="text-right">{Number(t.amount).toFixed(6)}</td>
-                  <td className="text-right">{formatMoney(t.total)}</td>
+                  <td className="text-right">{formatMoney(t.total, currency)}</td>
 
                   <td
                     className={`text-right ${t.pnl === undefined
-                        ? "text-muted-foreground"
-                        : t.pnl >= 0
-                          ? "text-profit"
-                          : "text-loss"
+                      ? "text-muted-foreground"
+                      : t.pnl >= 0
+                        ? "text-profit"
+                        : "text-loss"
                       }`}
                   >
                     {t.pnl !== undefined
-                      ? `${t.pnl >= 0 ? "+" : ""}${formatMoney(t.pnl)}`
+                      ? `${t.pnl >= 0 ? "+" : ""}${formatMoney(t.pnl, currency)}`
                       : "—"}
                   </td>
                 </tr>

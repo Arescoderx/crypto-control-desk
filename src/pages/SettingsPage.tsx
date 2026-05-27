@@ -10,17 +10,25 @@ import {
 } from "@/components/ui/select";
 import { useState } from "react";
 import { toast } from "sonner";
+import { getDB } from "@/lib/db";
+import { convertToUsd, formatMoney, getCurrency, getCurrencyLabel } from "@/lib/currency";
 import {
   resetAccount,
   updateBalance,
   clearTrades,
+  clearSignals,
   exportData,
+  exportJson,
+  importJson,
   updateCurrency,
 } from "@/lib/settings";
 
 export default function SettingsPage() {
+  const initialDB = getDB();
   const [balance, setBalance] = useState("");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState<"USD" | "BRL">(getCurrency(initialDB));
+  const [currentBalance, setCurrentBalance] = useState(initialDB.wallet.balance);
+  const [jsonText, setJsonText] = useState("");
 
   const handleSetBalance = () => {
     const value = parseFloat(balance);
@@ -30,7 +38,8 @@ export default function SettingsPage() {
       return;
     }
 
-    updateBalance(value);
+    updateBalance(convertToUsd(value, currency));
+    setCurrentBalance(convertToUsd(value, currency));
     toast.success("Saldo atualizado!");
     setBalance("");
   };
@@ -56,6 +65,29 @@ export default function SettingsPage() {
     toast.success("CSV exportado!");
   };
 
+  const handleExportJson = () => {
+    exportJson();
+    toast.success("JSON exportado!");
+  };
+
+  const handleImportJson = () => {
+    try {
+      importJson(jsonText);
+      const db = getDB();
+      setCurrency(getCurrency(db));
+      setCurrentBalance(db.wallet.balance);
+      setJsonText("");
+      toast.success("JSON importado!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "JSON invalido");
+    }
+  };
+
+  const handleClearSignals = () => {
+    clearSignals();
+    toast.success("Sinais apagados!");
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -71,8 +103,11 @@ export default function SettingsPage() {
           <CardTitle>Saldo</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Saldo atual: {formatMoney(currentBalance, currency)}
+          </p>
           <Input
-            placeholder="Novo saldo"
+            placeholder={`Novo saldo em ${getCurrencyLabel(currency)}`}
             value={balance}
             onChange={(e) => setBalance(e.target.value)}
           />
@@ -128,6 +163,43 @@ export default function SettingsPage() {
             className="w-full"
           >
             Exportar CSV
+          </Button>
+
+          <Button
+            variant="secondary"
+            onClick={handleExportJson}
+            className="w-full"
+          >
+            Exportar JSON
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={handleClearSignals}
+            className="w-full"
+          >
+            Limpar sinais
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle>Importar JSON</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <textarea
+            className="min-h-32 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+            placeholder="Cole aqui o JSON exportado pelo sistema"
+            value={jsonText}
+            onChange={(event) => setJsonText(event.target.value)}
+          />
+          <Button
+            onClick={handleImportJson}
+            className="w-full"
+            disabled={!jsonText.trim()}
+          >
+            Importar JSON
           </Button>
         </CardContent>
       </Card>
