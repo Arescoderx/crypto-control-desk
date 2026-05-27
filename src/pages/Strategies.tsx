@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -12,15 +13,18 @@ import {
 } from "@/components/ui/dialog";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { Plus, Zap } from "lucide-react";
+import { FileJson, Plus, Trash2, Zap } from "lucide-react";
 import { getDB } from "@/lib/db";
 import { formatMoney, getCurrency } from "@/lib/currency";
 import {
   createStrategy,
+  deleteStrategy,
+  importOpenClawStrategies,
   toggleStrategy,
   updateStrategy,
 } from "@/lib/settings";
 import type { Strategy } from "@/types/db";
+import { toast } from "sonner";
 
 const COINS = [
   { symbol: "BTC", name: "Bitcoin" },
@@ -34,7 +38,9 @@ const COINS = [
 export default function Strategies() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [newName, setNewName] = useState("");
+  const [openClawJson, setOpenClawJson] = useState("");
   const [currency, setCurrency] = useState<"USD" | "BRL">("USD");
 
   const load = () => {
@@ -70,15 +76,72 @@ export default function Strategies() {
     load();
   };
 
+  const handleOpenClawImport = () => {
+    try {
+      const imported = importOpenClawStrategies(openClawJson);
+
+      setOpenClawJson("");
+      setImportDialogOpen(false);
+      load();
+      toast.success(`${imported.length} estrategia(s) importada(s)`);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "JSON do OpenClaw invalido"
+      );
+    }
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold font-display">Estrategias</h1>
           <p className="text-muted-foreground text-sm">
             Configure estrategias para moedas especificas.
           </p>
         </div>
+
+        <div className="flex gap-2">
+        <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline">
+              <FileJson className="mr-2 h-4 w-4" />
+              Importar OpenClaw
+            </Button>
+          </DialogTrigger>
+
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Importar estrategias do OpenClaw</DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 pt-4">
+              <Textarea
+                className="min-h-72 font-mono text-xs"
+                placeholder='Cole aqui o JSON do OpenClaw. Exemplo: {"strategies":[{"name":"Demo","symbols":["BTC"],"active":true,"risk":0.1,"minChange":0,"takeProfit":0.1,"stopLoss":0.1,"maxAllocationPerCoin":0.3,"minTradeValue":10}]}'
+                value={openClawJson}
+                onChange={(event) => setOpenClawJson(event.target.value)}
+              />
+
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  onClick={handleOpenClawImport}
+                  disabled={!openClawJson.trim()}
+                >
+                  Importar estrategias
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setOpenClawJson("")}
+                  disabled={!openClawJson.trim()}
+                >
+                  Limpar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -117,6 +180,7 @@ export default function Strategies() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -159,6 +223,22 @@ export default function Strategies() {
                         load();
                       }}
                     />
+
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => {
+                        const deleted = deleteStrategy(strategy.id);
+                        load();
+                        if (deleted) {
+                          toast.success("Estrategia apagada");
+                        } else {
+                          toast.error("Nao foi possivel apagar esta estrategia");
+                        }
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
 
                   <div className="space-y-2">

@@ -48,6 +48,7 @@ export function getDefaultDB(): DB {
 
 function normalizeDB(raw: any): DB {
   const defaults = getDefaultDB();
+  const seenStrategyIds = new Set<string>();
 
   return {
     wallet: {
@@ -79,15 +80,25 @@ function normalizeDB(raw: any): DB {
       : defaults.history,
 
     strategies: Array.isArray(raw?.strategies)
-      ? raw.strategies.map((strategy: any) => {
+      ? raw.strategies.map((strategy: any, index: number) => {
           const selectedSymbols = Array.isArray(strategy?.symbols)
             ? strategy.symbols.filter((symbol: string) =>
                 ALLOWED_SYMBOLS.includes(symbol)
               )
             : ["BTC"];
+          const rawId =
+            typeof strategy?.id === "string" && strategy.id.trim()
+              ? strategy.id
+              : `strategy_${Date.now()}_${index}`;
+          const id = seenStrategyIds.has(rawId)
+            ? `${rawId}_${index}`
+            : rawId;
+
+          seenStrategyIds.add(id);
 
           return {
             ...strategy,
+            id,
             symbols: selectedSymbols.length > 0 ? selectedSymbols : ["BTC"],
           };
         })

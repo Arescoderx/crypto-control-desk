@@ -3,6 +3,19 @@ import type { Strategy, DB } from "@/types/db";
 
 const ALLOWED_SYMBOLS = ["BTC", "ETH", "BNB", "DOGE", "ADA", "SOL"];
 
+function toNumber(value: unknown, fallback: number) {
+  const parsed =
+    typeof value === "string"
+      ? Number(value.replace(",", "."))
+      : Number(value);
+
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
 // 🔄 RESET TOTAL
 export function resetAccount() {
   const fresh = getDefaultDB();
@@ -77,6 +90,8 @@ export function createStrategy(name: string) {
 // 🔘 TOGGLE
 // ======================
 export function toggleStrategy(id: string) {
+  if (!id) return;
+
   const db: DB = getDB();
 
   const s = db.strategies.find((s) => s.id === id);
@@ -91,6 +106,8 @@ export function toggleStrategy(id: string) {
 // ✏️ UPDATE
 // ======================
 export function updateStrategy(id: string, data: Partial<Strategy>) {
+  if (!id) return;
+
   const db: DB = getDB();
 
   const s = db.strategies.find((s) => s.id === id);
@@ -117,11 +134,63 @@ export function updateStrategy(id: string, data: Partial<Strategy>) {
 // ❌ DELETE
 // ======================
 export function deleteStrategy(id: string) {
+  if (!id) return false;
+
   const db: DB = getDB();
+  const index = db.strategies.findIndex((s) => s.id === id);
 
-  db.strategies = db.strategies.filter((s) => s.id !== id);
+  if (index === -1) return false;
 
+  db.strategies.splice(index, 1);
   saveDB(db);
+
+  return true;
+}
+
+export function importOpenClawStrategies(json: string) {
+  const parsed = JSON.parse(json);
+  const rawStrategies = Array.isArray(parsed) ? parsed : parsed?.strategies;
+
+  if (!Array.isArray(rawStrategies)) {
+    throw new Error("JSON precisa ter um array strategies");
+  }
+
+  const db: DB = getDB();
+  const now = Date.now();
+
+  const strategies: Strategy[] = rawStrategies.map((raw: any, index: number) => {
+    const symbols = Array.isArray(raw?.symbols)
+      ? raw.symbols
+          .map((symbol: unknown) => String(symbol).toUpperCase().trim())
+          .filter((symbol: string) => ALLOWED_SYMBOLS.includes(symbol))
+      : [];
+
+    if (symbols.length === 0) {
+      throw new Error(`Estrategia ${index + 1} nao tem moeda valida`);
+    }
+
+    return {
+      id: `openclaw_${now}_${index}`,
+      name: String(raw?.name || `OpenClaw ${db.strategies.length + index + 1}`),
+      active: typeof raw?.active === "boolean" ? raw.active : true,
+      symbols,
+      risk: clamp(toNumber(raw?.risk, 0.1), 0.01, 0.5),
+      minChange: Math.max(toNumber(raw?.minChange, 0.5), 0),
+      takeProfit: Math.max(toNumber(raw?.takeProfit, 1), 0),
+      stopLoss: Math.max(toNumber(raw?.stopLoss, 1), 0),
+      maxAllocationPerCoin: clamp(
+        toNumber(raw?.maxAllocationPerCoin, 0.3),
+        0.01,
+        1
+      ),
+      minTradeValue: Math.max(toNumber(raw?.minTradeValue, 10), 1),
+    };
+  });
+
+  db.strategies.push(...strategies);
+  saveDB(db);
+
+  return strategies;
 }
 
 // 📤 EXPORT CSV
@@ -215,13 +284,17 @@ export function importJson(json: string) {
     signals: Array.isArray(parsed.signals) ? parsed.signals : current.signals,
     history: Array.isArray(parsed.history) ? parsed.history : current.history,
     strategies: Array.isArray(parsed.strategies)
-      ? parsed.strategies.map((strategy: Strategy) => {
+      ? parsed.strategies.map((strategy: Strategy, index: number) => {
           const symbols = Array.isArray(strategy.symbols)
             ? strategy.symbols.filter((symbol) => ALLOWED_SYMBOLS.includes(symbol))
             : ["BTC"];
 
           return {
             ...strategy,
+            id:
+              typeof strategy.id === "string" && strategy.id.trim()
+                ? strategy.id
+                : `imported_${Date.now()}_${index}`,
             symbols: symbols.length > 0 ? symbols : ["BTC"],
           };
         })
